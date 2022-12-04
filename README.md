@@ -1,5 +1,6 @@
 # yolov3-from-scratch
 An attempt to implement YoloV3 with pytorch
+Paper: https://arxiv.org/pdf/1804.02767.pdf
 
 # Comments
 The idea is to build a CNN that takes images split into a 13x13 boxes and outputs a feature map of the same size with with depth B * (5 + C) -> B is is the max number of bounding boxes per section, C is the number of classes and 5 are x,w,h,b, and confidence (objectivness). Thus, per output box we have o = [tx,ty,tw,th,p,c0,...cn]
