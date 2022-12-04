@@ -15,3 +15,4 @@ The idea is to build a CNN that takes images split into a 13x13 boxes and output
 - multiscaling: after striding at 32, upsimple again and apply strides 16 and 8, thus getting different grids: 13x13, 26x26 and 52x52 -> this allows detecting smaller objects.
 - total boundin boxes for a 416x416 image: (52x52 + 26x26 + 13x13) x 3 = 10647
     * to reduce this number we could: apply a threshold on objectivness, apply NMS (remove boxes predicting same class - keep highest).
+- loading the weights of a pre-trained network is difficult. They are stored without any structure!

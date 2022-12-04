@@ -9,7 +9,8 @@ import numpy as np
 import utils
 
 # TODOs
-#  avoid rewriting config twice. do it once when you build the network
+# avoid rewriting config twice. do it once when you build the network
+# set network info as class attributes instead of dict
 
 N_IN_CHANNELS = 3 # RGB
 LEAKY_RELU_SLOP = 0.1
@@ -26,6 +27,7 @@ class DetectionLayer(nn.Module):
 def get_conv_block(index, layer_config, prev_filters):
     "Build a convolutional block from a config"
     block = nn.Sequential()
+    # the following logic is obtained from the way weights are stored on disk
     if 'batch_normalize' in layer_config:
         batch_normalize = int(layer_config["batch_normalize"])
         bias = False
@@ -82,13 +84,14 @@ def get_yolo_block(index, layer_config):
     masks = [int(x) for x in layer_config["mask"].split(",")]
     anchors = [int(x) for x in layer_config["anchors"].split(",")]
     # select only tuples of anchors that are in masks
-    anchors = [(anchors[i], anchors[i+1]) for i in range(0, len(anchors),2) if i in masks]
-    block.add_module("Detection_{index}", DetectionLayer(anchors))
+    all_anchor_pairs = [(anchors[i], anchors[i+1]) for i in range(0, len(anchors),2)]
+    anchors = [all_anchor_pairs[x] for x in masks]
+    block.add_module(f"Detection_{index}", DetectionLayer(anchors))
     config = {}
     config['type'] = layer_config['type']
     config['masks'] = masks
     config['anchors'] = anchors
-    ...
+    config['classes'] = int(layer_config['classes'])
     return block, config
 
 def get_shortcut_block(index, layer_config):
@@ -122,10 +125,12 @@ def create_net(layers_config):
 class YoloV3(nn.Module):
     def __init__(self, config_file):
         super(YoloV3, self).__init__()
-        self.network_info, self.layers_config = utils.parse_config(config_file)
+        self.layers_config, self.network_info = utils.parse_config(config_file)
         self.all_blocks = create_net(self.layers_config)
-    
-    def forward(self, x, CUDA=False):
+        assert self.network_info["height"] == self.network_info["width"], "Accepting only squared images!"
+        self.weight_read_cursor = 0
+                
+    def forward(self, x, use_gpu=False):
         all_outputs = {}
         write = 0
         for index, (block, config) in enumerate(self.all_blocks):
@@ -147,22 +152,71 @@ class YoloV3(nn.Module):
                 x = all_outputs[index-1] + all_outputs[index+config['from']]
     
             elif layer_type == 'yolo':        
-                anchors = self.all_blocks[index][0].anchors
-                inp_dim = int (self.network_info["height"])
-                num_classes = int (layer["classes"])
+                anchors = block[0].anchors
+                #anchors = config['anchors']
+                inp_dim = int(self.network_info["height"])
+                num_classes = config["classes"]
                 x = x.data
-                x = utils.predict_transform(x, inp_dim, anchors, num_classes, CUDA)
+                x = utils.get_all_bboxes(x, inp_dim, anchors, num_classes, use_gpu)
                 if not write:
                     detections = x
                     write = 1
-        
                 else:       
                     detections = torch.cat((detections, x), 1)
-        
             all_outputs[index] = x
-        
-        return 
+        return detections
+    
+    def _get_next_n_values(self, n):
+        weights = torch.from_numpy(self.weights[self.weight_read_cursor:self.weight_read_cursor + n])
+        self.weight_read_cursor += n
+        return weights
+                    
+    def load_weights(self, weights_file):
+        fp = open(weights_file, "rb")
+        header = np.fromfile(fp, dtype = np.int32, count=5)
+        self.header = torch.from_numpy(header)
+        self.seen = self.header[3]   
+        self.weights = np.fromfile(fp, dtype=np.float32)
+
+        for index, (block, config) in enumerate(self.all_blocks):
+            module_type = config["type"]
+            if module_type == "convolutional":
+                conv_subblock = block[0]
+                if config["batch_normalize"]:
+                    bn_subblock = block[1]
+                    num_bn_biases = bn_subblock.bias.numel()
+                    bn_biases = self._get_next_n_values(num_bn_biases)
+                    bn_weights = self._get_next_n_values(num_bn_biases)
+                    bn_running_mean = self._get_next_n_values(num_bn_biases)
+                    bn_running_var = self._get_next_n_values(num_bn_biases)
+                    bn_biases = bn_biases.view_as(bn_subblock.bias.data)
+                    bn_weights = bn_weights.view_as(bn_subblock.weight.data)
+                    bn_running_mean = bn_running_mean.view_as(bn_subblock.running_mean)
+                    bn_running_var = bn_running_var.view_as(bn_subblock.running_var)
+                    bn_subblock.bias.data.copy_(bn_biases)
+                    bn_subblock.weight.data.copy_(bn_weights)
+                    bn_subblock.running_mean.copy_(bn_running_mean)
+                    bn_subblock.running_var.copy_(bn_running_var)
+                else:
+                    num_biases = conv_subblock.bias.numel()
+                    conv_biases = self._get_next_n_values(num_biases)
+                    conv_biases = conv_biases.view_as(conv_subblock.bias.data)
+                    conv_subblock.bias.data.copy_(conv_biases)
+                    
+                num_weights = conv_subblock.weight.numel()
+                conv_weights = self._get_next_n_values(num_weights)
+                conv_weights = conv_weights.view_as(conv_subblock.weight.data)
+                conv_subblock.weight.data.copy_(conv_weights)
+        del self.weights
+        fp.close()
         
 if __name__ == "__main__":
-    layers_config, network_info = utils.parse_config('yolov3.cfg')
-    print(create_net(layers_config))
+    #layers_config, network_info = utils.parse_config('yolov3.cfg')
+    #print(create_net(layers_config))
+    model = YoloV3("yolov3.cfg")
+    model.load_weights("official_weights/yolov3.weights")
+    inp = utils.load_test_image()
+    # here pred should be num_images x num_bboxes x label_vector_length
+    pred = model(inp, use_gpu=torch.cuda.is_available())
+    print(pred)
+    print(pred.size())
