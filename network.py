@@ -13,6 +13,7 @@ import utils
 # avoid rewriting config twice. do it once when you build the network
 # set network info as class attributes instead of dict
 # instead of resizing, keep aspect ration and use padding
+# remove gpu code or handle images respectively
 
 N_IN_CHANNELS = 3 # RGB
 LEAKY_RELU_SLOP = 0.1

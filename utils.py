@@ -11,22 +11,6 @@ import torchvision.ops.boxes as bops
 
 INPUT_SIZE = 608
 
-def resize_with_ratio(img):
-    old_size = img.shape[:2] # old_size is in (height, width) format
-
-    ratio = float(INPUT_SIZE)/max(old_size)
-    new_size = tuple([int(x*ratio) for x in old_size])
-    img = cv2.resize(img, (new_size[1], new_size[0]))
-    delta_w = INPUT_SIZE - new_size[1]
-    delta_h = INPUT_SIZE - new_size[0]
-    top, bottom = delta_h//2, delta_h-(delta_h//2)
-    left, right = delta_w//2, delta_w-(delta_w//2)
-
-    color = [0, 0, 0]
-    new_im = cv2.copyMakeBorder(img, top, bottom, left, right, cv2.BORDER_CONSTANT, value=color)
-    return new_im
-
-
 def parse_config(config_file):
     " Read the official yolo config file correctly"
     with open(config_file) as f:
@@ -97,26 +81,6 @@ def get_all_bboxes(prediction, inp_dim, anchors, num_classes, use_gpu=False):
     
     return prediction
 
-def load_test_image(path=os.path.join('data', 'debugging_data', 'dog-cycle-car.png')):
-    img = cv2.imread(path)
-    img = cv2.resize(img, (INPUT_SIZE, INPUT_SIZE))
-    img_ =  img[:,:,::-1].transpose((2,0,1))
-    img_ = img_[np.newaxis,:,:,:] / 255.0
-    img_ = torch.from_numpy(img_).float()
-    img_ = Variable(img_)
-    return img_
-
-
-def unique(tensor):
-    tensor_np = tensor.cpu().numpy()
-    unique_np = np.unique(tensor_np)
-    unique_tensor = torch.from_numpy(unique_np)
-    
-    tensor_res = tensor.new(unique_tensor.shape)
-    tensor_res.copy_(unique_tensor)
-    return tensor_res
-
-
 def nms(dets, thresh):
     # check this
     x1 = dets[:, 0]
@@ -143,15 +107,17 @@ def nms(dets, thresh):
         order = order[inds + 1]
     return keep
 
-def get_results(prediction, min_confidence=0.5):
-    box_corner = prediction.new(prediction.shape)
-    box_corner[:,:,0] = (prediction[:,:,0] - prediction[:,:,2]/2)
-    box_corner[:,:,1] = (prediction[:,:,1] - prediction[:,:,3]/2)
-    box_corner[:,:,2] = (prediction[:,:,0] + prediction[:,:,2]/2) 
-    box_corner[:,:,3] = (prediction[:,:,1] + prediction[:,:,3]/2)
-    prediction[:,:,:4] = box_corner[:,:,:4]
+def get_final_bboxes(prediction, confidence_threshold, nms_threshold):
+    x = prediction[...,0].clone()
+    y = prediction[...,1].clone()
+    w = prediction[...,2].clone()
+    h = prediction[...,3].clone()
+    prediction[...,0] = x - w/2
+    prediction[...,1] = y - h/2
+    prediction[...,2] = x + w/2
+    prediction[...,3] = y + h/2
     
-    candidates = prediction[prediction[:,:,4] > min_confidence].unsqueeze(0)
+    candidates = prediction[prediction[:,:,4] > confidence_threshold].unsqueeze(0)
     batch_size, n_bboxes, pred_vector = candidates.size()
     for image in range(batch_size):
         top_class_per_bbox = torch.argmax(candidates[image, :, 5:], axis=1)
@@ -161,28 +127,31 @@ def get_results(prediction, min_confidence=0.5):
         all_ = []
         for idx, c in enumerate(unique_classes):
             top_bboxes_per_class = candidates[candidates[:,5] == c]
-            keep = nms(top_bboxes_per_class, 0.5)
-            tmp = top_bboxes_per_class[keep]
+            keep = nms(top_bboxes_per_class, nms_threshold)
+            #tmp = top_bboxes_per_class[keep]
             for i in keep:
                 tmp = top_bboxes_per_class[i]
                 all_.append(torch.tensor([0, tmp[0], tmp[1], tmp[2], tmp[3], tmp[4], 1, tmp[5]]))
                 
     return torch.stack(all_)
-    
 
-def prep_image(img, inp_dim):
-    """
-    Prepare image for inputting to the neural network. 
-    
-    Returns a Variable 
-    """
-    img = (resize_with_ratio(img))
-    img = img[:,:,::-1].transpose((2,0,1)).copy()
-    img = torch.from_numpy(img).float().div(255.0).unsqueeze(0)
-    return img
+def transform_image(img, input_dim):
+    # reszing with ratio
+    # maybe optimize this
+    old_size = img.shape[:2]
+    ratio = float(input_dim)/max(old_size)
+    new_size = tuple([int(x*ratio) for x in old_size])
+    img = cv2.resize(img, (new_size[1], new_size[0]))
+    delta_w = input_dim - new_size[1]
+    delta_h = input_dim - new_size[0]
+    top, bottom = delta_h//2, delta_h-(delta_h//2)
+    left, right = delta_w//2, delta_w-(delta_w//2)
+    img = cv2.copyMakeBorder(img, top, bottom, left, right, cv2.BORDER_CONSTANT)
+    # normalization and permutation of axis
+    return torch.tensor(img/255, dtype=torch.float).permute((2,0,1)).unsqueeze(0)
 
-def load_classes(namesfile):
-    fp = open(namesfile, "r")
-    names = fp.read().split("\n")[:-1]
-    return names
+def load_classes(path):
+    with open(path) as file:
+        labels = [line.rstrip() for line in file]
+    return labels
 
