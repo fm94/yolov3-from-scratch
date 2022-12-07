@@ -5,12 +5,14 @@ import torch.nn as nn
 import torch.nn.functional as F 
 from torch.autograd import Variable
 import numpy as np
+from torchinfo import summary
 
 import utils
 
 # TODOs
 # avoid rewriting config twice. do it once when you build the network
 # set network info as class attributes instead of dict
+# instead of resizing, keep aspect ration and use padding
 
 N_IN_CHANNELS = 3 # RGB
 LEAKY_RELU_SLOP = 0.1
@@ -131,8 +133,11 @@ class YoloV3(nn.Module):
         self.weight_read_cursor = 0
                 
     def forward(self, x, use_gpu=False):
+        # potentional optimization: empty all_outputs after route layer
+        #                         : actually instead of storing all outputs we could
+        #                           just store the ones that are needed -- from config
         all_outputs = {}
-        write = 0
+        yolo_layer_outputs = []
         for index, (block, config) in enumerate(self.all_blocks):
             layer_type = config["type"]
 
@@ -153,18 +158,15 @@ class YoloV3(nn.Module):
     
             elif layer_type == 'yolo':        
                 anchors = block[0].anchors
-                #anchors = config['anchors']
                 inp_dim = int(self.network_info["height"])
                 num_classes = config["classes"]
                 x = x.data
+                # for now I need to do this for every yolo layer because of the different strides
+                # maybe it can be optimized!
                 x = utils.get_all_bboxes(x, inp_dim, anchors, num_classes, use_gpu)
-                if not write:
-                    detections = x
-                    write = 1
-                else:       
-                    detections = torch.cat((detections, x), 1)
+                yolo_layer_outputs.append(x)
             all_outputs[index] = x
-        return detections
+        return torch.cat(yolo_layer_outputs, 1)#detections
     
     def _get_next_n_values(self, n):
         weights = torch.from_numpy(self.weights[self.weight_read_cursor:self.weight_read_cursor + n])
@@ -211,12 +213,15 @@ class YoloV3(nn.Module):
         fp.close()
         
 if __name__ == "__main__":
+    # some testing
     #layers_config, network_info = utils.parse_config('yolov3.cfg')
     #print(create_net(layers_config))
-    model = YoloV3("yolov3.cfg")
-    model.load_weights("official_weights/yolov3.weights")
-    inp = utils.load_test_image()
+    #model = YoloV3("official_configs/yolov3.cfg")
+    #model.load_weights("official_weights/yolov3.weights")
+    #inp = utils.load_test_image()
     # here pred should be num_images x num_bboxes x label_vector_length
-    pred = model(inp, use_gpu=torch.cuda.is_available())
-    print(pred)
-    print(pred.size())
+    #pred = model(inp, use_gpu=torch.cuda.is_available())
+    #print(pred)
+    #print(pred.size())
+    #summary(model, input_size=(1, 3, 608, 608))
+    pass
