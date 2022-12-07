@@ -10,7 +10,7 @@ Current FPS: <del>0.5, 0.82</del> 0.84
 If you want to play with the code a bit then:
 - clone the repo
 - run `python detect_image.py --images <path to your image or folder with many images>`
-- The weights are already included and will be automatically loaded
+- you will have to download the weights of a pre-trained network e.g., from `https://pjreddie.com/media/files/yolov3.weights`
 
 I'll be working on optimizing the code to improve the FPS which will then be used for online object detection .... for videos.
 
@@ -44,6 +44,7 @@ The idea is to build a CNN that takes images split into a 13x13 boxes and output
         * 1083 = 19 x 19 x 3
 
 - problem: what if there are two bboxes of same class and overlapping? NMS will remove them
+- problem: yolov3-tiny doesn't work (weights can't be loaded)
 
 # Examples
 <center>

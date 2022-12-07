@@ -10,6 +10,7 @@ import network
 
 # TODOs
 # implement batch-based inference
+# currently loading a folder is not working
 
 parser = argparse.ArgumentParser(description='Detect objects in a Picture using YoloV3')
 
@@ -45,7 +46,7 @@ text_color = (255,255,255)
 if os.path.isfile(opt.images):
     all_image_paths = [opt.images]
 elif os.path.isdir(opt.images):
-    all_image_paths = [f for f in os.listdir(opt.images)]
+    all_image_paths = [os.path.join(opt.images, fn) for fn in next(os.walk(opt.images))[2]]
 else:
     print(">> images path is invalid...Exiting...")
     exit(1)
