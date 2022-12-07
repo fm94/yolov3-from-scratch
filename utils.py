@@ -1,15 +1,7 @@
 from __future__ import division
-
 import torch 
-import torch.nn as nn
-import torch.nn.functional as F 
-from torch.autograd import Variable
 import numpy as np
 import cv2 
-import os
-import torchvision.ops.boxes as bops
-
-INPUT_SIZE = 608
 
 def parse_config(config_file):
     " Read the official yolo config file correctly"
@@ -78,7 +70,6 @@ def get_all_bboxes(prediction, inp_dim, anchors, num_classes, use_gpu=False):
     # upscaling from feature map to original image size
     # TODO: need to check whether the transformation happens before or after upscaling
     prediction[:,:,:4] *= stride
-    
     return prediction
 
 def nms(dets, thresh):
@@ -107,7 +98,7 @@ def nms(dets, thresh):
         order = order[inds + 1]
     return keep
 
-def get_final_bboxes_(prediction, confidence_threshold, nms_threshold):
+def get_final_bboxes(prediction, confidence_threshold, nms_threshold):
     # convert coordinates // this is apparently slow
     x = prediction[...,0].clone()
     y = prediction[...,1].clone()
@@ -132,6 +123,7 @@ def get_final_bboxes_(prediction, confidence_threshold, nms_threshold):
                 all_.append(top_bboxes_per_class[i])
     return torch.stack(all_)
 
+
 def transform_image(img, input_dim):
     # reszing with ratio
     # maybe optimize this
@@ -146,7 +138,6 @@ def transform_image(img, input_dim):
     img = cv2.copyMakeBorder(img, top, bottom, left, right, cv2.BORDER_CONSTANT)
     # normalization and permutation of axis
     return (torch.tensor(img/255, dtype=torch.float).permute((2,0,1)).unsqueeze(0), top, left, ratio)
-    #return torch.tensor(img/255, dtype=torch.float).permute((2,0,1)).unsqueeze(0)
 
 def load_classes(path):
     with open(path) as file:

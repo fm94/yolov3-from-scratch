@@ -6,6 +6,14 @@ Config files to build the neural net can be obtained from here: https://github.c
 
 Current FPS: <del>0.5, 0.82</del> 0.84
 
+# Test it With Your Images
+If you want to play with the code a bit then:
+- clone the repo
+- run `python detect_image.py --images <path to your image or folder with many images>`
+- The weights are already included and will be automatically loaded
+
+I'll be working on optimizing the code to improve the FPS which will then be used for online object detection .... for videos.
+
 # Comments
 The idea is to build a CNN that takes images split into a 13x13 boxes and outputs a feature map of the same size with with depth B * (5 + C) -> B is is the max number of bounding boxes per section, C is the number of classes and 5 are x,w,h,b, and confidence (objectivness). Thus, per output box we have o = [tx,ty,tw,th,p,c0,...cn]
 - we use 416x416 input images with stride 32 thus, the output is 13x13 --total--> 13x13x(Bx(5+C)).
@@ -39,10 +47,10 @@ The idea is to build a CNN that takes images split into a 13x13 boxes and output
 
 # Examples
 <center>
-<img src="detections/annotated_person.jpg" alt="drawing" width="300"/>
-<img src="detections/annotated_highway.jpg" alt="drawing" width="300"/>
-<img src="detections/annotated_dog-cycle-car.png" alt="drawing" width="300"/>
-<img src="annotated_1664393718760016.JPG" alt="drawing" width="300"/>
+<img src="detections/annotated_person.jpg" alt="example" width="300"/>
+<img src="detections/annotated_highway.jpg" alt="example" width="300"/>
+<img src="detections/annotated_dog-cycle-car.png" alt="example" width="300"/>
+<img src="detections/annotated_1664393718760016.JPG" alt="example" width="300"/>
 </center>
 
 # TODOs

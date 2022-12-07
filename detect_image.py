@@ -70,7 +70,7 @@ for idx, (image, top, left, ratio) in enumerate(all_batches):
     with torch.no_grad():
         prediction = model(image)
     # filter out bboxes
-    prediction = utils.get_final_bboxes_(prediction, opt.confidence_threshold, opt.nms_threshold)
+    prediction = utils.get_final_bboxes(prediction, opt.confidence_threshold, opt.nms_threshold)
     output_time = time.time()
     # rescale bboxes
     prediction[...,[0, 2]] =  (prediction[...,[0, 2]] - left) / ratio
