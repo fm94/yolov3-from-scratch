@@ -107,7 +107,8 @@ def nms(dets, thresh):
         order = order[inds + 1]
     return keep
 
-def get_final_bboxes(prediction, confidence_threshold, nms_threshold):
+def get_final_bboxes_(prediction, confidence_threshold, nms_threshold):
+    # convert coordinates // this is apparently slow
     x = prediction[...,0].clone()
     y = prediction[...,1].clone()
     w = prediction[...,2].clone()
@@ -123,16 +124,12 @@ def get_final_bboxes(prediction, confidence_threshold, nms_threshold):
         top_class_per_bbox = torch.argmax(candidates[image, :, 5:], axis=1)
         unique_classes = torch.unique(top_class_per_bbox)
         candidates = torch.hstack([candidates[image, :, :5], top_class_per_bbox.unsqueeze(1)])
-
         all_ = []
         for idx, c in enumerate(unique_classes):
             top_bboxes_per_class = candidates[candidates[:,5] == c]
             keep = nms(top_bboxes_per_class, nms_threshold)
-            #tmp = top_bboxes_per_class[keep]
             for i in keep:
-                tmp = top_bboxes_per_class[i]
-                all_.append(torch.tensor([0, tmp[0], tmp[1], tmp[2], tmp[3], tmp[4], 1, tmp[5]]))
-                
+                all_.append(top_bboxes_per_class[i])
     return torch.stack(all_)
 
 def transform_image(img, input_dim):
@@ -148,7 +145,8 @@ def transform_image(img, input_dim):
     left, right = delta_w//2, delta_w-(delta_w//2)
     img = cv2.copyMakeBorder(img, top, bottom, left, right, cv2.BORDER_CONSTANT)
     # normalization and permutation of axis
-    return torch.tensor(img/255, dtype=torch.float).permute((2,0,1)).unsqueeze(0)
+    return (torch.tensor(img/255, dtype=torch.float).permute((2,0,1)).unsqueeze(0), top, left, ratio)
+    #return torch.tensor(img/255, dtype=torch.float).permute((2,0,1)).unsqueeze(0)
 
 def load_classes(path):
     with open(path) as file:

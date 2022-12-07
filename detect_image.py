@@ -55,7 +55,8 @@ all_images = [cv2.imread(path) for path in all_image_paths]
 classes = utils.load_classes(opt.classes)
 
 # do transformations including scaling and normalization
-all_batches = torch.stack([utils.transform_image(img, input_dim) for img in all_images])
+#all_batches = torch.stack([utils.transform_image(img, input_dim) for img in all_images])
+all_batches = [utils.transform_image(img, input_dim) for img in all_images]
 
 # put them into batches
 
@@ -63,16 +64,17 @@ all_batches = torch.stack([utils.transform_image(img, input_dim) for img in all_
 #for batch in torch.split(all_batches, int(len(all_images)/opt.batch_size)):
 
 # loop over images
-for idx, image in enumerate(all_batches):
+for idx, (image, top, left, ratio) in enumerate(all_batches):
     # get predictions without gradients then itss fast
-    start_det_loop = time.time()
+    start = time.time()
     with torch.no_grad():
         prediction = model(image)
     # filter out bboxes
     prediction = utils.get_final_bboxes_(prediction, opt.confidence_threshold, opt.nms_threshold)
-    output_recast = time.time()
+    output_time = time.time()
     # rescale bboxes
-    
+    prediction[...,[0, 2]] =  (prediction[...,[0, 2]] - left) / ratio
+    prediction[...,[1, 3]] =  (prediction[...,[1, 3]] - top) / ratio
     # write boxes
     n_boxes, _ = prediction.size()
     final_img = all_images[idx]
@@ -87,5 +89,6 @@ for idx, image in enumerate(all_batches):
     # save image
     file_name = os.path.join(opt.output_dir, "annotated_" + os.path.basename(all_image_paths[idx]))
     cv2.imwrite(file_name, final_img)
-    
-    print(output_recast - start_det_loop)
+    finish_time = time.time()
+    print(f">> Forward pass time:          {output_time - start:.3f}s")
+    print(f">> Entire inference + io time: {finish_time - start:.3f}s")
