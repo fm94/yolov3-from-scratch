@@ -4,7 +4,9 @@ Paper: https://arxiv.org/pdf/1804.02767.pdf<br>
 Architecture: https://miro.medium.com/max/720/1*d4Eg17IVJ0L41e7CTWLLSg.webp (source: https://towardsdatascience.com/yolo-v3-object-detection-53fb7d3bfe6b)<br>
 Config files to build the neural net can be obtained from here: https://github.com/pjreddie/darknet/tree/master/cfg<br>
 
-Current FPS: <del>0.5, 0.82</del> 0.84
+Current FPS:
+- yolov3: <del>0.5, 0.82</del> 0.84
+- yolov3-tiny: 8.2
 
 # Test it With Your Images
 If you want to play with the code a bit then:
@@ -47,14 +49,17 @@ The idea is to build a CNN that takes images split into a 13x13 boxes and output
 - problem: yolov3-tiny doesn't work (weights can't be loaded)
 
 # Examples
-<center>
+<p align="center">
+<img src="detections/annotated_street.gif" width="300"/>
+<img src="detections/annotated_office.gif" width="300"/>
 <img src="detections/annotated_person.jpg" alt="example" width="300"/>
 <img src="detections/annotated_highway.jpg" alt="example" width="300"/>
 <img src="detections/annotated_dog-cycle-car.png" alt="example" width="300"/>
 <img src="detections/annotated_1664393718760016.JPG" alt="example" width="300"/>
-</center>
+</p>
 
 # TODOs
 - further optimizations for higher FPS
 - batch inference handling
 - detections in video
+- gpu support

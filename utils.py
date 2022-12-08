@@ -2,6 +2,7 @@ from __future__ import division
 import torch 
 import numpy as np
 import cv2 
+import time
 
 def parse_config(config_file):
     " Read the official yolo config file correctly"
@@ -26,7 +27,7 @@ def parse_config(config_file):
     config.pop(0)
     return config, network_info
 
-def get_all_bboxes(prediction, inp_dim, anchors, num_classes, use_gpu=False):
+def get_all_bboxes(prediction, inp_dim, anchors, num_classes, threshold, use_gpu=False):
     "takes feature map and returns all bboxes as rows"
     # data size: batch_size x ? x grid x grid
     # ? is number of attributes in prediction vector x n_anchors per grid box
@@ -43,6 +44,8 @@ def get_all_bboxes(prediction, inp_dim, anchors, num_classes, use_gpu=False):
 
     # transformation of objectivness
     prediction[:,:,4] = torch.sigmoid(prediction[:,:,4])
+    #prediction = prediction[prediction[:,:,4] > threshold].unsqueeze(0)
+    #keep = prediction.size()[1]
     
     # transformation of x,y coordinates
     grid = np.arange(grid_size)
@@ -53,6 +56,7 @@ def get_all_bboxes(prediction, inp_dim, anchors, num_classes, use_gpu=False):
         x_offset = x_offset.cuda()
         y_offset = y_offset.cuda()
     x_y_offset = torch.cat((x_offset, y_offset), 1).repeat(1,num_anchors).view(-1,2).unsqueeze(0)
+
     prediction[:,:,0] = torch.sigmoid(prediction[:,:,0])
     prediction[:,:,1] = torch.sigmoid(prediction[:,:,1])
     prediction[:,:,:2] += x_y_offset
@@ -62,6 +66,7 @@ def get_all_bboxes(prediction, inp_dim, anchors, num_classes, use_gpu=False):
     if use_gpu:
         anchors = anchors.cuda()
     anchors = anchors.repeat(grid_size*grid_size, 1).unsqueeze(0)
+
     prediction[:,:,2:4] = anchors * torch.exp(prediction[:,:,2:4])
     
     # transformation of class prediction
@@ -70,7 +75,8 @@ def get_all_bboxes(prediction, inp_dim, anchors, num_classes, use_gpu=False):
     # upscaling from feature map to original image size
     # TODO: need to check whether the transformation happens before or after upscaling
     prediction[:,:,:4] *= stride
-    return prediction
+    # return only a few
+    return prediction[prediction[:,:,4] > threshold].unsqueeze(0)
 
 def nms(dets, thresh):
     # check this
@@ -98,7 +104,7 @@ def nms(dets, thresh):
         order = order[inds + 1]
     return keep
 
-def get_final_bboxes(prediction, confidence_threshold, nms_threshold):
+def get_final_bboxes(prediction, nms_threshold):
     # convert coordinates // this is apparently slow
     x = prediction[...,0].clone()
     y = prediction[...,1].clone()
@@ -108,20 +114,19 @@ def get_final_bboxes(prediction, confidence_threshold, nms_threshold):
     prediction[...,1] = y - h/2
     prediction[...,2] = x + w/2
     prediction[...,3] = y + h/2
-    
-    candidates = prediction[prediction[:,:,4] > confidence_threshold].unsqueeze(0)
-    batch_size, n_bboxes, pred_vector = candidates.size()
+
+    batch_size, n_bboxes, pred_vector = prediction.size()
     for image in range(batch_size):
-        top_class_per_bbox = torch.argmax(candidates[image, :, 5:], axis=1)
+        top_class_per_bbox = torch.argmax(prediction[image, :, 5:], axis=1)
         unique_classes = torch.unique(top_class_per_bbox)
-        candidates = torch.hstack([candidates[image, :, :5], top_class_per_bbox.unsqueeze(1)])
+        prediction = torch.hstack([prediction[image, :, :5], top_class_per_bbox.unsqueeze(1)])
         all_ = []
         for idx, c in enumerate(unique_classes):
-            top_bboxes_per_class = candidates[candidates[:,5] == c]
+            top_bboxes_per_class = prediction[prediction[:,5] == c]
             keep = nms(top_bboxes_per_class, nms_threshold)
             for i in keep:
                 all_.append(top_bboxes_per_class[i])
-    return torch.stack(all_)
+    return torch.stack(all_) if all_ else None
 
 
 def transform_image(img, input_dim):
@@ -144,3 +149,22 @@ def load_classes(path):
         labels = [line.rstrip() for line in file]
     return labels
 
+
+def put_boxes_on_image(prediction, final_img, nms_threshold, left, top, ratio, box_color, text_color, classes):
+    prediction = get_final_bboxes(prediction, nms_threshold)
+    if not torch.is_tensor(prediction): return final_img
+    
+    # rescale bboxes
+    prediction[...,[0, 2]] =  (prediction[...,[0, 2]] - left) / ratio
+    prediction[...,[1, 3]] =  (prediction[...,[1, 3]] - top) / ratio
+    # write boxes
+    n_boxes, _ = prediction.size()
+    for box in range(n_boxes):
+        c1 = tuple([int(value) for value in prediction[box, :2]])
+        c2 = tuple([int(value) for value in prediction[box, 2:4]])
+        cv2.rectangle(final_img, c1, c2, box_color, 1)
+        label = f"{classes[int(prediction[box, -1])]}: {prediction[box, -2]:.3f}"
+        (w, h), _ = cv2.getTextSize(label, cv2.FONT_HERSHEY_DUPLEX, 0.6, 1)
+        cv2.rectangle(final_img, (c1[0], c1[1] - 20), (c1[0] + w, c1[1]), box_color, -1)
+        cv2.putText(final_img, label, (c1[0], c1[1] - 5), cv2.FONT_HERSHEY_DUPLEX, 0.6, text_color, 1)
+    return final_img

@@ -38,7 +38,7 @@ def get_conv_block(index, layer_config, prev_filters):
     stride = int(layer_config["stride"])
     padding = int(layer_config["pad"])
     activation = layer_config["activation"]
-    pad = (kernel_size - 1) // 2 if padding else 0 # TODO: check this
+    pad = (kernel_size - 1) // 2 if padding else 0
     block.add_module(f"conv_{index}", nn.Conv2d(prev_filters, filters, kernel_size, stride, pad, bias=bias))
     if batch_normalize:
         block.add_module(f"batch_norm_{index}", nn.BatchNorm2d(filters))
@@ -91,6 +91,7 @@ def get_yolo_block(index, layer_config):
     config['masks'] = masks
     config['anchors'] = anchors
     config['classes'] = int(layer_config['classes'])
+    config['ignore_threshold'] = float(layer_config['ignore_thresh'])
     return block, config
 
 def get_shortcut_block(index, layer_config):
@@ -101,6 +102,17 @@ def get_shortcut_block(index, layer_config):
     config['from'] = int(layer_config['from'])
     return block, config
 
+def get_max_pooling_block(index, layer_config):
+    block = nn.Sequential()
+    kernel_size = int(layer_config["size"])
+    stride = int(layer_config["stride"])
+    if kernel_size==2 and stride==1:
+        block.add_module('ZeroPad2d_{index}',nn.ZeroPad2d((0,1,0,1)))
+    block.add_module(f"max_pooling_{index}", nn.MaxPool2d(kernel_size, stride, padding=int((kernel_size-1)//2)))
+    config = {}
+    config['type'] = layer_config['type']
+    return block, config
+
 def create_net(layers_config):   
     all_blocks = []
     prev_filters = N_IN_CHANNELS
@@ -108,6 +120,8 @@ def create_net(layers_config):
     for index, layer in enumerate(layers_config):
         if layer["type"] == "convolutional":
             block, output_filter, config = get_conv_block(index, layer, prev_filters)
+        elif layer['type'] == 'maxpool':
+            block, config = get_max_pooling_block(index, layer)
         elif layer["type"] == "upsample":
             block, config = get_upsampling_block(index, layer) 
         elif layer["type"] == "route":
@@ -133,14 +147,15 @@ class YoloV3(nn.Module):
         # potentional optimization: empty all_outputs after route layer
         #                         : actually instead of storing all outputs we could
         #                           just store the ones that are needed -- from config
+        
         all_outputs = {}
         yolo_layer_outputs = []
         for index, (block, config) in enumerate(self.all_blocks):
             layer_type = config["type"]
 
-            if layer_type == "convolutional" or layer_type == "upsample":
+            if layer_type == "convolutional" or layer_type == "upsample" or layer_type == 'maxpool':
                 x = block(x)
-    
+            
             elif layer_type == "route":
                 routes = config["routes"]
                 if len(routes) > 1:
@@ -149,21 +164,22 @@ class YoloV3(nn.Module):
                     x = torch.cat((first_route, second_route), 1)
                 else:
                     x = all_outputs[index + routes[0]]
-                    
+                
             elif  layer_type == "shortcut":
                 x = all_outputs[index-1] + all_outputs[index+config['from']]
-    
-            elif layer_type == 'yolo':        
+
+            elif layer_type == 'yolo':  
                 anchors = block[0].anchors
                 inp_dim = int(self.network_info["height"])
                 num_classes = config["classes"]
                 x = x.data
                 # for now I need to do this for every yolo layer because of the different strides
                 # maybe it can be optimized!
-                x = utils.get_all_bboxes(x, inp_dim, anchors, num_classes, use_gpu)
+                x = utils.get_all_bboxes(x, inp_dim, anchors, num_classes, config['ignore_threshold'], use_gpu)
                 yolo_layer_outputs.append(x)
+
             all_outputs[index] = x
-        return torch.cat(yolo_layer_outputs, 1)#detections
+        return torch.cat(yolo_layer_outputs, 1)
     
     def _get_next_n_values(self, n):
         weights = torch.from_numpy(self.weights[self.weight_read_cursor:self.weight_read_cursor + n])
@@ -208,7 +224,7 @@ class YoloV3(nn.Module):
                 conv_subblock.weight.data.copy_(conv_weights)
         del self.weights
         fp.close()
-        
+
 if __name__ == "__main__":
     # some testing
     #layers_config, network_info = utils.parse_config('yolov3.cfg')
