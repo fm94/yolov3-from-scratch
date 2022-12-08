@@ -50,8 +50,8 @@ The idea is to build a CNN that takes images split into a 13x13 boxes and output
 
 # Examples
 <p align="center">
-<img src="detections/annotated_street.gif" width="300"/>
-<img src="detections/annotated_office.gif" width="300"/>
+<img src="detections/annotated_street_low.gif" alt="not full fps" width="300"/>
+<img src="detections/annotated_office_low.gif" alt="not full fps" width="300"/>
 <img src="detections/annotated_person.jpg" alt="example" width="300"/>
 <img src="detections/annotated_highway.jpg" alt="example" width="300"/>
 <img src="detections/annotated_dog-cycle-car.png" alt="example" width="300"/>
