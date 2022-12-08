@@ -18,8 +18,6 @@ parser.add_argument("--images", default="imgs", type=str,
                     help="Image / Directory containing images to perform detection upon",)
 parser.add_argument("--output_dir", default="detections", type = str,
                     help ="Directory where to store annotated pictures")
-parser.add_argument("--confidence_threshold", default = 0.5, type = float,
-                    help="Minimum objectivness to consider an object",)
 parser.add_argument("--nms_threshold", default = 0.5, type = float,
                     help="max IOU to remove duplicates in NMS")
 parser.add_argument("--config", default = "official_configs/yolov3.cfg", type = str,
@@ -70,23 +68,9 @@ for idx, (image, top, left, ratio) in enumerate(all_batches):
     start = time.time()
     with torch.no_grad():
         prediction = model(image)
-    # filter out bboxes
-    prediction = utils.get_final_bboxes(prediction, opt.confidence_threshold, opt.nms_threshold)
     output_time = time.time()
-    # rescale bboxes
-    prediction[...,[0, 2]] =  (prediction[...,[0, 2]] - left) / ratio
-    prediction[...,[1, 3]] =  (prediction[...,[1, 3]] - top) / ratio
-    # write boxes
-    n_boxes, _ = prediction.size()
-    final_img = all_images[idx]
-    for box in range(n_boxes):
-        c1 = tuple([int(value) for value in prediction[box, :2]])
-        c2 = tuple([int(value) for value in prediction[box, 2:4]])
-        cv2.rectangle(final_img, c1, c2, box_color, 1)
-        label = f"{classes[int(prediction[box, -1])]}: {prediction[box, -2]:.3f}"
-        (w, h), _ = cv2.getTextSize(label, cv2.FONT_HERSHEY_DUPLEX, 0.6, 1)
-        cv2.rectangle(final_img, (c1[0], c1[1] - 20), (c1[0] + w, c1[1]), box_color, -1)
-        cv2.putText(final_img, label, (c1[0], c1[1] - 5), cv2.FONT_HERSHEY_DUPLEX, 0.6, text_color, 1)
+    # filter out bboxes
+    final_img = utils.put_boxes_on_image(prediction, all_images[idx], opt.nms_threshold, left, top, ratio, box_color, text_color, classes)
     # save image
     file_name = os.path.join(opt.output_dir, "annotated_" + os.path.basename(all_image_paths[idx]))
     cv2.imwrite(file_name, final_img)
