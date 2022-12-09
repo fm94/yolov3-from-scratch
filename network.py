@@ -68,10 +68,12 @@ def get_upsampling_block(index, layer_config):
 def get_route_block(index, layer_config, output_filters):
     block = nn.Sequential()
     routes = [int(x) for x in layer_config["layers"].split(',')]
-    filters = output_filters[index + routes[0]]
-    if len(routes) > 1:
-        # in case there is a second route take the direct index without offset
-        filters += output_filters[routes[1]]
+    #filters = output_filters[index + routes[0]]
+    #for r in routes[1:]:
+    #    # in case the index is positive take the direct index without offset
+    #    idx = index + r if r < 0 else r
+    #    filters += output_filters[r]
+    filters = sum([output_filters[route] if route > 0 else output_filters[index+route] for route in routes])
     block.add_module(f"route_{index}", EmptyLayer())
     config = {}
     config['type'] = layer_config['type']
@@ -158,12 +160,13 @@ class YoloV3(nn.Module):
             
             elif layer_type == "route":
                 routes = config["routes"]
-                if len(routes) > 1:
-                    first_route = all_outputs[index + routes[0]]
-                    second_route = all_outputs[routes[1]]
-                    x = torch.cat((first_route, second_route), 1)
-                else:
-                    x = all_outputs[index + routes[0]]
+                x = torch.cat([all_outputs[route] if route > 0 else all_outputs[index+route] for route in routes], 1)
+                #if len(routes) > 1:
+                #    first_route = all_outputs[index + routes[0]]
+                #    second_route = all_outputs[routes[1]]
+                #    x = torch.cat((first_route, second_route), 1)
+                #else:
+                #    x = all_outputs[index + routes[0]]
                 
             elif  layer_type == "shortcut":
                 x = all_outputs[index-1] + all_outputs[index+config['from']]

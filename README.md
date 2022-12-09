@@ -12,6 +12,7 @@ Current FPS:
 If you want to play with the code a bit then:
 - clone the repo
 - run `python detect_image.py --images <path to your image or folder with many images>`
+- for videos use: `python detect_video.py --video <path to your video> --save`
 - you will have to download the weights of a pre-trained network e.g., from `https://pjreddie.com/media/files/yolov3.weights`
 
 I'll be working on optimizing the code to improve the FPS which will then be used for online object detection .... for videos.
