@@ -2,6 +2,7 @@ from __future__ import division
 import torch 
 import torch.nn as nn
 import numpy as np
+import time
 
 import utils
 
@@ -68,11 +69,6 @@ def get_upsampling_block(index, layer_config):
 def get_route_block(index, layer_config, output_filters):
     block = nn.Sequential()
     routes = [int(x) for x in layer_config["layers"].split(',')]
-    #filters = output_filters[index + routes[0]]
-    #for r in routes[1:]:
-    #    # in case the index is positive take the direct index without offset
-    #    idx = index + r if r < 0 else r
-    #    filters += output_filters[r]
     filters = sum([output_filters[route] if route > 0 else output_filters[index+route] for route in routes])
     block.add_module(f"route_{index}", EmptyLayer())
     config = {}
@@ -152,21 +148,16 @@ class YoloV3(nn.Module):
         
         all_outputs = {}
         yolo_layer_outputs = []
+        #times = {'convolutional':[0,0], 'route':[0,0], 'shortcut':[0,0], 'yolo':[0,0], 'upsample':[0,0], 'maxpool':[0,0]}
         for index, (block, config) in enumerate(self.all_blocks):
             layer_type = config["type"]
-
+            #start = time.time()
             if layer_type == "convolutional" or layer_type == "upsample" or layer_type == 'maxpool':
                 x = block(x)
             
             elif layer_type == "route":
                 routes = config["routes"]
                 x = torch.cat([all_outputs[route] if route > 0 else all_outputs[index+route] for route in routes], 1)
-                #if len(routes) > 1:
-                #    first_route = all_outputs[index + routes[0]]
-                #    second_route = all_outputs[routes[1]]
-                #    x = torch.cat((first_route, second_route), 1)
-                #else:
-                #    x = all_outputs[index + routes[0]]
                 
             elif  layer_type == "shortcut":
                 x = all_outputs[index-1] + all_outputs[index+config['from']]
@@ -180,8 +171,14 @@ class YoloV3(nn.Module):
                 # maybe it can be optimized!
                 x = utils.get_all_bboxes(x, inp_dim, anchors, num_classes, config['ignore_threshold'], use_gpu)
                 yolo_layer_outputs.append(x)
-
+            
+            #times[layer_type][0] += time.time()-start
+            #times[layer_type][1] += 1
+                
             all_outputs[index] = x
+        #for key, value in times.items():
+        #    print(key, value[0]/value[1])
+        #print(times)
         return torch.cat(yolo_layer_outputs, 1)
     
     def _get_next_n_values(self, n):

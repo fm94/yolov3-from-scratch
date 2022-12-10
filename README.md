@@ -8,6 +8,8 @@ Current FPS:
 - yolov3: <del>0.5, 0.82</del> 0.84
 - yolov3-tiny: 8.2
 
+Currently I am trying to implement the training code.
+
 # Test it With Your Images
 If you want to play with the code a bit then:
 - clone the repo
